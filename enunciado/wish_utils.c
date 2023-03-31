@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include "wish_utils.h"
 
-extern char *mypath[];
 
 void execute_exit(char *args)
 {
@@ -57,6 +56,8 @@ void execute_path(char *newpath, char ***mypath)
 	int path_count = 0;
 	int i = 0;
 	char *path = strtok_r(copypath, " ", &copypath);
+
+	//printf("COMANDOS en path executa: %s\n", newpath);
 
 	// count number of paths to be added
 	while (path != NULL)

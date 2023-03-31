@@ -19,10 +19,106 @@
 
 char history[HISTORY_SIZE][BUFFER_SIZE];
 int history_count = 0;
+#define DELIMITERS " \t\r\n\a\0"
 
-int main(int argc, char *argv[]) {	
+void execute_commands(char *s, char ***mypath)
+{
+	char *token;
+	int fd;
+	char *command_string;
+	char str[MAX_SIZE];
 
-	printf("Numero de argumentos: %d\n", argc);
+	// Obtener el primer argumento del comando
+	command_string = strtok_r(s, " ", &s);
+
+	// Comparar el primer argumento con las posibles opciones
+	if (strcmp(command_string, "exit") == 0)
+	{
+		execute_exit(s);
+	}
+	else if (strcmp(command_string, "cd") == 0)
+	{
+		execute_cd(s);
+	}
+	else if (strcmp(command_string, "path") == 0)
+	{
+		execute_path(s, mypath);
+	}
+	else
+	{
+		fd = -1;
+		char ***mp_copy = malloc(2 * sizeof(char **)); // Crea una copia de mypath
+		memcpy(mp_copy, mypath, 2 * sizeof(char **));
+		char ***mp = mp_copy;
+
+		char specificpath[MAX_SIZE];
+
+		while ((strcmp((*mp)[0], "") != 0) && fd != 0)
+		{
+			strcpy(specificpath, *(mp[0]++));
+			strncat(specificpath, command_string, strlen(command_string));
+			fd = access(specificpath, X_OK);
+		}
+
+		// Si el file descriptor existe, osea la ruta del programa y el programa
+		if (fd == 0)
+		{
+			// Como comprobamos que el programa existe, entonces creamos un proceso hijo
+			int subprocess = fork();
+
+			// Error lanzando el subproceso
+			if (subprocess < 0)
+			{
+				printf("Error launching the subprocess");
+			}
+			else if (subprocess == 0)
+			{ // Estoy en el proceso hijo
+				// Cuento cuantos argumentos tiene el comando
+				int num_args = 0;
+				char *s_copy = strdup(s);
+				char *token = strtok(s_copy, " ");
+				while (token != NULL)
+				{
+					num_args++;
+					token = strtok(NULL, " ");
+				}
+				// Guardo los argumentos en el vector myargs
+				int i = 1;
+				char *myargs[num_args + 1];
+				myargs[0] = strdup(command_string);
+
+				char *s_copy2 = strdup(s);
+				token = strtok(s_copy2, " ");
+				while (token != NULL)
+				{
+					myargs[i] = token;
+					token = strtok(NULL, " ");
+					i++;
+				}
+				myargs[i] = NULL;
+				i = 0;
+				while (myargs[i] != NULL)
+				{
+					i++;
+				}
+				execv(specificpath, myargs);
+			}
+			else
+			{ // Estoy en el proceso padre y esperaré a que los hijos terminen
+				wait(NULL);
+			}
+		}
+		else
+		{ // Si el file descriptor no existe
+			printf("Command not found: %s\n", str);
+		}
+	}
+	// free(input_line);
+}
+
+int main(int argc, char *argv[])
+{
+
 	char str[MAX_SIZE];
 	char *command_string;
 	char *s;
@@ -34,161 +130,11 @@ int main(int argc, char *argv[]) {
 	mypath[0] = "/bin/";
 	mypath[1] = "";
 
-	//Modo batch. Para probar el modo batch ejecute: "./wish prueba.txt", para el modo interactivo, ejecute "./wish"
-	if (argc == 2) {
-		char commands[MAX_COMMANDS][MAX_SIZE];
-		int num_commands = 0;
-	
-		FILE *fp = fopen(argv[1], "r");
-		if (fp == NULL) {
-			printf("Error opening file\n");
-			exit(1);
-		}
-
-		// Leer lineas del archivo
-		while (fgets(commands[num_commands], MAX_SIZE, fp)) {
-			num_commands++;
-		}
-		fclose(fp);
-
-		// Ejecutar los comandos en orden
-		for (int i = 0; i < num_commands; i++) {
-
-			input_line = commands[i];
-			
-			char *command= strdup(input_line);
-			size_t pos = strcspn(command, "\n");  
-			if (command[pos] == '\n') {          
-				command[pos] = '\0';             
-			}
-			s = command;
-			command_string = strtok_r(s, " ", &s);
-
-			printf("comando original command: (%s)\n", command);
-			printf("command_string es solo el comando sin argumentos: (%s)\n", command_string);
-			printf("La variable s tiene sólo los argumentos del comando y son: (%s)\n", s);
-
-			int i = 0;
-			printf("-------------------mypath--------------\n");
-			while (strcmp(mypath[i], "") != 0)
-			{
-				printf("%s\n", mypath[i]);
-				i++;
-			}
-			printf("--------------------------------\n");
-
-			// Comandos Build-in
-			if (strcmp(command_string, "exit") == 0)
-			{
-				execute_exit(s);
-			}
-			else if (strcmp(command_string, "cd") == 0)
-			{
-				execute_cd(s);
-			}
-			else if (strcmp(command_string, "path") == 0)
-			{
-				execute_path(s, &mypath);
-
-				// Ejecución de otro programa, no Build-On
-			}
-			else
-			{
-				fd = -1;
-				char **mp = mypath;
-				char specificpath[MAX_SIZE];
-
-				// De acuerdo a las rutas especificadas en mypath, comprobaremos cuales son accesibles y correspondientes al ejecutable,
-				// Por ejemplo si queremos usar el comando ls, y en mypath está su ruta /bin/, entonces deberíamos de obtener en specificpath /bin/ls
-				// ls es como cualquier programa ejecutable escrito en c o un script, con o sin argumentos
-
-				printf("-------------specificpath-------------------\n");
-				while ((strcmp(*mp, "") != 0) && fd != 0)
-				{
-					strcpy(specificpath, *mp++);
-					strncat(specificpath, command_string, strlen(command_string));
-					fd = access(specificpath, X_OK);
-					printf("ruta valida? %d\n", fd);
-					printf("specificpath %s\n\n", specificpath);
-				}
-				printf("--------------------------------\n");
-
-				// Si el file descriptor existe, osea la ruta del programa y el programa
-				if (fd == 0)
-				{
-					// Como comprobamos que el programa existe, entonces creamos un proceso hijo
-					int subprocess = fork();
-
-					// Error lanzando el subproceso
-					if (subprocess < 0)
-					{
-						printf("Error launching the subprocess");
-					}
-					else if (subprocess == 0)
-					{ // Estoy en el proceso hijo
-						// Como al hacer fork se hace una copia exacta e independiente de todo el programa padre, puedo manipular variables en el entorno del hijo
-						// Extraigo los argumentos para preparar el execv()
-
-						// Cuento cuantos argumentos tiene el comando
-						int num_args = 0;
-						char *s_copy = strdup(s);
-						char *token = strtok(s_copy, " ");
-						while (token != NULL)
-						{
-							num_args++;
-							token = strtok(NULL, " ");
-						}
-						printf("num_args: %d\n", num_args);
-
-						// Guardo los argumentos en el vector myargs
-						int i = 1;
-						char *myargs[num_args + 1];
-						myargs[0] = strdup(command_string);
-
-						char *s_copy2 = strdup(s);
-						token = strtok(s_copy2, " ");
-						while (token != NULL)
-						{
-							myargs[i] = token;
-							token = strtok(NULL, " ");
-							i++;
-						}
-						myargs[i] = NULL;
-
-						i = 0;
-						printf("------------MYARGS------------\n");
-						while (myargs[i] != NULL)
-						{
-							printf("(%s)\n", myargs[i]);
-							i++;
-						}
-						printf("--------------------------------\n");
-
-						// Como me interesa ejecutar el proceso hijo como un nuevo programa, mando los argumentos capturados en el comando sobreescribiendo la imagen del proceso en cuestión
-						// Se hace mediente la función execv(), toma 2 argumentos: el primero es la ruta donde se encuentra el ejecutable y el segundo son el nombre de ejecutable con sus argumentos en caso de tenerlos
-						// y es necesario especificar null al final de los argumentos
-						// Así si se ejecuta el comando "ls -la", la funcion debe ser: execv("/bin/ls", { "ls", "-la", NULL})
-
-						execv(specificpath, myargs);
-					}
-					else
-					{ // Estoy en el proceso padre y esperaré a que los hijos terminen
-
-						wait(NULL);
-					}
-				}
-				else
-				{ // Si el file descriptor no existe
-					printf("Command not found: %s\n", str);
-				}
-			}
-
-    	}
-
-    //Modo interactivo
-	}else if (argc == 1){   
-		
-		do{
+	if (argc == 1)
+	{
+		// Modo interactivo
+		do
+		{
 
 			input_line = readline("wish> ");
 			if (!input_line)
@@ -216,132 +162,51 @@ int main(int argc, char *argv[]) {
 			}
 
 			s = input_line;
-			command_string = strtok_r(s, " ", &s);
+			// command_string = strtok_r(s, " ", &s);
 
-			printf("command_string es solo el comando sin argumentos: (%s)\n", command_string);
-			printf("La variable s tiene sólo los argumentos del comando y son: (%s)\n", s);
+			// Ejecuto los comandos
+			execute_commands(s, &mypath);
 
-			int i = 0;
-			printf("-------------------mypath--------------\n");
-			while (strcmp(mypath[i], "") != 0)
-			{
-				printf("%s\n", mypath[i]);
-				i++;
-			}
-			printf("--------------------------------\n");
-
-			// Comandos Build-in
-			if (strcmp(command_string, "exit") == 0)
-			{
-				execute_exit(s);
-			}
-			else if (strcmp(command_string, "cd") == 0)
-			{
-				execute_cd(s);
-			}
-			else if (strcmp(command_string, "path") == 0)
-			{
-				execute_path(s, &mypath);
-
-				// Ejecución de otro programa, no Build-On
-			}
-			else
-			{
-				fd = -1;
-				char **mp = mypath;
-				char specificpath[MAX_SIZE];
-
-				// De acuerdo a las rutas especificadas en mypath, comprobaremos cuales son accesibles y correspondientes al ejecutable,
-				// Por ejemplo si queremos usar el comando ls, y en mypath está su ruta /bin/, entonces deberíamos de obtener en specificpath /bin/ls
-				// ls es como cualquier programa ejecutable escrito en c o un script, con o sin argumentos
-
-				printf("-------------specificpath-------------------\n");
-				while ((strcmp(*mp, "") != 0) && fd != 0)
-				{
-					strcpy(specificpath, *mp++);
-					strncat(specificpath, command_string, strlen(command_string));
-					fd = access(specificpath, X_OK);
-					printf("ruta valida? %d\n", fd);
-					printf("specificpath %s\n\n", specificpath);
-				}
-				printf("--------------------------------\n");
-
-				// Si el file descriptor existe, osea la ruta del programa y el programa
-				if (fd == 0)
-				{
-					// Como comprobamos que el programa existe, entonces creamos un proceso hijo
-					int subprocess = fork();
-
-					// Error lanzando el subproceso
-					if (subprocess < 0)
-					{
-						printf("Error launching the subprocess");
-					}
-					else if (subprocess == 0)
-					{ // Estoy en el proceso hijo
-						// Como al hacer fork se hace una copia exacta e independiente de todo el programa padre, puedo manipular variables en el entorno del hijo
-						// Extraigo los argumentos para preparar el execv()
-
-						// Cuento cuantos argumentos tiene el comando
-						int num_args = 0;
-						char *s_copy = strdup(s);
-						char *token = strtok(s_copy, " ");
-						while (token != NULL)
-						{
-							num_args++;
-							token = strtok(NULL, " ");
-						}
-						printf("num_args: %d\n", num_args);
-
-						// Guardo los argumentos en el vector myargs
-						int i = 1;
-						char *myargs[num_args + 1];
-						myargs[0] = strdup(command_string);
-
-						char *s_copy2 = strdup(s);
-						token = strtok(s_copy2, " ");
-						while (token != NULL)
-						{
-							myargs[i] = token;
-							token = strtok(NULL, " ");
-							i++;
-						}
-						myargs[i] = NULL;
-
-						i = 0;
-						printf("------------MYARGS------------\n");
-						while (myargs[i] != NULL)
-						{
-							printf("(%s)\n", myargs[i]);
-							i++;
-						}
-						printf("--------------------------------\n");
-
-						// Como me interesa ejecutar el proceso hijo como un nuevo programa, mando los argumentos capturados en el comando sobreescribiendo la imagen del proceso en cuestión
-						// Se hace mediente la función execv(), toma 2 argumentos: el primero es la ruta donde se encuentra el ejecutable y el segundo son el nombre de ejecutable con sus argumentos en caso de tenerlos
-						// y es necesario especificar null al final de los argumentos
-						// Así si se ejecuta el comando "ls -la", la funcion debe ser: execv("/bin/ls", { "ls", "-la", NULL})
-
-						execv(specificpath, myargs);
-					}
-					else
-					{ // Estoy en el proceso padre y esperaré a que los hijos terminen
-
-						wait(NULL);
-					}
-				}
-				else
-				{ // Si el file descriptor no existe
-					printf("Command not found: %s\n", str);
-				}
-			}
-			free(input_line);
 		} while (1);
-	
-	//Error
-	}else{
-		printf("Error, demasiados argumentos\n");
-        exit(1);
+		free(input_line);
+	}
+	else if (argc == 2) // Modo batch
+	{
+		char commands[MAX_COMMANDS][MAX_SIZE];
+		int num_commands = 0;
+
+		FILE *fp = fopen(argv[1], "r");
+		if (fp == NULL)
+		{
+			printf("Error opening file\n");
+			exit(1);
+		}
+
+		// Leer lineas del archivo
+		while (fgets(commands[num_commands], MAX_SIZE, fp))
+		{
+			num_commands++;
+		}
+		fclose(fp);
+
+		// Ejecutar los comandos en orden
+		for (int i = 0; i < num_commands; i++)
+		{
+
+			input_line = commands[i];
+
+			input_line[strcspn(input_line, "\n")] = '\0';
+			s = input_line;
+			// command_string = strtok_r(s, " ", &s);
+
+			// Ejecuto los comandos
+			execute_commands(s, &mypath);
+		}
+	}
+	else
+	{
+		printf("Uso: programa [archivo]\n");
+		return 1;
 	}
 
 	return 0;
